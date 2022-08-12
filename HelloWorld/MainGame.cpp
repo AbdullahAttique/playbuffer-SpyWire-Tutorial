@@ -6,12 +6,6 @@ int DISPLAY_WIDTH = 1280;
 int DISPLAY_HEIGHT = 720;
 int DISPLAY_SCALE = 1;
 
-struct GameState {
-	int score = 0;
-};
-
-GameState gameState;
-
 enum GameObjectType {
 	TYPE_NULL = -1,
 	TYPE_AGENT8,
@@ -23,12 +17,27 @@ enum GameObjectType {
 	TYPE_DESTROYED,
 };
 
+enum Agent8State {
+	STATE_APPEAR = 0,
+	STATE_HALT,
+	STATE_PLAY,
+	STATE_DEAD,
+};
+
+struct GameState {
+	int score = 0;
+	Agent8State agentState = STATE_APPEAR;
+};
+
+GameState gameState;
+
 void HandlePlayerControls();
 void UpdateFan();
 void UpdateTools();
 void UpdateCoinsAndStars();
 void UpdateLasers();
 void UpdateDestroyed();
+void UpdateAgent8();
 
 // The entry point for a PlayBuffer program
 void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
@@ -48,12 +57,18 @@ bool MainGameUpdate( float elapsedTime )
 {
 	Play::DrawBackground();
 
-	HandlePlayerControls();
+	//HandlePlayerControls();
+	UpdateAgent8();
 	UpdateFan();
 	UpdateTools();
 	UpdateCoinsAndStars();
 	UpdateLasers();
 	UpdateDestroyed();
+
+	Play::DrawFontText("64px", "ARROW KEYS TO MOVE UP AND DOWN AND SPACE TO FIRE",
+		{ DISPLAY_WIDTH / 2, DISPLAY_HEIGHT - 30 }, Play::CENTRE);
+	Play::DrawFontText("132px", "SCORE: " + std::to_string(gameState.score),
+		{ DISPLAY_WIDTH / 2, 50 }, Play::CENTRE);
 
 	Play::PresentDrawingBuffer();
 	return Play::KeyDown( VK_ESCAPE );
@@ -80,9 +95,16 @@ void HandlePlayerControls() {
 	}
 	// reduce speed and stop
 	else {
-		Play::SetSprite(obj_agent8, "agent8_hang", 0.02f);
-		obj_agent8.velocity *= 0.5f;
-		obj_agent8.acceleration = { 0,0 };
+		if (obj_agent8.velocity.y > 5) {
+			gameState.agentState = STATE_HALT;
+			Play::SetSprite(obj_agent8, "agent8_halt", 0.333f);
+			obj_agent8.acceleration = { 0,0 };
+		}
+		else {
+			Play::SetSprite(obj_agent8, "agent8_hang", 0.02f);
+			obj_agent8.velocity *= 0.5f;
+			obj_agent8.acceleration = { 0,0 };
+		}	
 	}
 	// shooting
 	if (Play::KeyPressed(VK_SPACE)) {
@@ -91,16 +113,6 @@ void HandlePlayerControls() {
 		Play::GetGameObject(id).velocity = { 32, 0 };
 		Play::PlayAudio("shoot");
 	}
-	Play::UpdateGameObject(obj_agent8);
-
-	// keep player within bounds
-	if (Play::IsLeavingDisplayArea(obj_agent8)) {
-		obj_agent8.pos = obj_agent8.oldPos;
-	}
-
-	// draw web line
-	Play::DrawLine({ obj_agent8.pos.x, 0 }, obj_agent8.pos, Play::cWhite);
-	Play::DrawObjectRotated(obj_agent8);
 }
 
 void UpdateFan() {
@@ -147,10 +159,10 @@ void UpdateTools() {
 		GameObject& obj_tool = Play::GetGameObject(id);
 
 		// kill player if hit
-		if (Play::IsColliding(obj_tool, obj_agent8)) {
+		if (gameState.agentState != STATE_DEAD && Play::IsColliding(obj_tool, obj_agent8)) {
 			Play::StopAudioLoop("music");
 			Play::PlayAudio("die");
-			obj_agent8.pos = { -100, -100 };
+			gameState.agentState = STATE_DEAD;
 		}
 		Play::UpdateGameObject(obj_tool);
 
@@ -271,3 +283,54 @@ void UpdateDestroyed() {
 	}
 }
 
+void UpdateAgent8() {
+	GameObject& obj_agent8 = Play::GetGameObjectByType(TYPE_AGENT8);
+
+	switch (gameState.agentState) {
+		case STATE_APPEAR:
+			// player drops down from above into position
+			obj_agent8.velocity = { 0, 12 };
+			obj_agent8.acceleration = { 0, 0.5f };
+			Play::SetSprite(obj_agent8, "agent8_fall", 0);
+			obj_agent8.rotation = 0;
+			if (obj_agent8.pos.y >= DISPLAY_HEIGHT / 3)
+				gameState.agentState = STATE_HALT;
+			break;
+		case STATE_HALT:
+			// stop player
+			obj_agent8.velocity *= 0.9f;
+			if (Play::IsAnimationComplete(obj_agent8))
+				gameState.agentState = STATE_PLAY;
+			break;
+		case STATE_PLAY:
+			HandlePlayerControls();
+			break;
+		case STATE_DEAD:
+			// player falls away while dead
+			obj_agent8.acceleration = { -0.3f, 0.5f };
+			obj_agent8.rotation += 0.25f;
+			// replay
+			if (Play::KeyPressed(VK_SPACE) == true) {
+				gameState.agentState = STATE_APPEAR;
+				obj_agent8.pos = { 115, 0 };
+				obj_agent8.velocity = { 0, 0 };
+				obj_agent8.frame = 0;
+				Play::StartAudioLoop("music");
+				gameState.score = 0;
+				// remove tools from scene
+				for (int id_obj : Play::CollectGameObjectIDsByType(TYPE_TOOL))
+					Play::GetGameObject(id_obj).type = TYPE_DESTROYED;
+			}
+			break;
+	}
+	
+	Play::UpdateGameObject(obj_agent8);
+
+	// keep player in bounds
+	if (Play::IsLeavingDisplayArea(obj_agent8) && gameState.agentState != STATE_DEAD)
+		obj_agent8.pos = obj_agent8.oldPos;
+
+	// draw web line
+	Play::DrawLine({ obj_agent8.pos.x, 0 }, obj_agent8.pos, Play::cWhite);
+	Play::DrawObjectRotated(obj_agent8);
+}
