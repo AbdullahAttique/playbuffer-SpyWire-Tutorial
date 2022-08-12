@@ -26,6 +26,7 @@ enum GameObjectType {
 void HandlePlayerControls();
 void UpdateFan();
 void UpdateTools();
+void UpdateCoinsAndStars();
 
 // The entry point for a PlayBuffer program
 void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
@@ -47,6 +48,7 @@ bool MainGameUpdate( float elapsedTime )
 	HandlePlayerControls();
 	UpdateFan();
 	UpdateTools();
+	UpdateCoinsAndStars();
 	Play::PresentDrawingBuffer();
 	return Play::KeyDown( VK_ESCAPE );
 }
@@ -108,6 +110,13 @@ void UpdateFan() {
 		}
 		Play::PlayAudio("tool");
 	}
+	// 1 in 150 chance of spawning a coin
+	if (Play::RandomRoll(150) == 1) {
+		int id = Play::CreateGameObject(TYPE_COIN, obj_fan.pos, 40, "coin");
+		GameObject& obj_coin = Play::GetGameObject(id);
+		obj_coin.velocity = { -3, 0 };
+		obj_coin.rotSpeed = 0.1f;
+	}
 	// animate fan to move within screen bounds by reversing direction
 	Play::UpdateGameObject(obj_fan);
 	if (Play::IsLeavingDisplayArea(obj_fan)) {
@@ -120,7 +129,7 @@ void UpdateFan() {
 void UpdateTools() {
 	GameObject& obj_agent8 = Play::GetGameObjectByType(TYPE_AGENT8);
 	std::vector<int> vTools = Play::CollectGameObjectIDsByType(TYPE_TOOL);
-
+	// for each tool
 	for (int id : vTools) {
 		GameObject& obj_tool = Play::GetGameObject(id);
 
@@ -141,6 +150,51 @@ void UpdateTools() {
 
 		if (!Play::IsVisible(obj_tool))
 			Play::DestroyGameObject(id);
+	}
+}
+
+void UpdateCoinsAndStars() {
+	GameObject& obj_agent8 = Play::GetGameObjectByType(TYPE_AGENT8);
+	std::vector<int> vCoins = Play::CollectGameObjectIDsByType(TYPE_COIN);
+	// for each coin
+	for (int id_coin : vCoins) {
+		GameObject& obj_coin = Play::GetGameObject(id_coin);
+		bool hasCollided = false;
+
+		// coin collection
+		if (Play::IsColliding(obj_coin, obj_agent8)) {
+			// spawn stars
+			for (float rad{ 0.25f }; rad < 2.0f; rad += 0.5f) {
+				int id = Play::CreateGameObject(TYPE_STAR, obj_agent8.pos, 0, "star");
+				GameObject& obj_star = Play::GetGameObject(id);
+				// star motion
+				obj_star.rotSpeed = 0.1f;
+				obj_star.acceleration = { 0.0f, 0.5f };
+				Play::SetGameObjectDirection(obj_star, 16, rad * PLAY_PI);
+			}
+
+			hasCollided = true;
+			gameState.score += 500;
+			Play::PlayAudio("collect");
+		}
+
+		Play::UpdateGameObject(obj_coin);
+		Play::DrawObjectRotated(obj_coin);
+
+		if (!Play::IsVisible(obj_coin) || hasCollided)
+			Play::DestroyGameObject(id_coin);
+	}
+
+	std::vector<int> vStars = Play::CollectGameObjectIDsByType(TYPE_STAR);
+
+	for (int id_star : vStars) {
+		GameObject& obj_star = Play::GetGameObject(id_star);
+
+		Play::UpdateGameObject(obj_star);
+		Play::DrawObjectRotated(obj_star);
+
+		if (!Play::IsVisible(obj_star))
+			Play::DestroyGameObject(id_star);
 	}
 }
 
