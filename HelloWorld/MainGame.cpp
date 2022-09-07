@@ -14,6 +14,8 @@ enum GameObjectType {
 	TYPE_COIN,
 	TYPE_STAR,
 	TYPE_LASER,
+	TYPE_DESTRUCTIONTOKEN,
+	TYPE_DESTRUCTIONWAVE,
 	TYPE_DESTROYED,
 };
 
@@ -26,6 +28,7 @@ enum Agent8State {
 
 struct GameState {
 	int score = 0;
+	int destructionTokens = 0;
 	Agent8State agentState = STATE_APPEAR;
 };
 
@@ -35,6 +38,7 @@ void HandlePlayerControls();
 void UpdateFan();
 void UpdateTools();
 void UpdateCoinsAndStars();
+void UpdateDestructionToken();
 void UpdateLasers();
 void UpdateDestroyed();
 void UpdateAgent8();
@@ -61,6 +65,7 @@ bool MainGameUpdate( float elapsedTime )
 	UpdateFan();
 	UpdateTools();
 	UpdateCoinsAndStars();
+	UpdateDestructionToken();
 	UpdateLasers();
 	UpdateDestroyed();
 
@@ -68,6 +73,12 @@ bool MainGameUpdate( float elapsedTime )
 		{ DISPLAY_WIDTH / 2, DISPLAY_HEIGHT - 30 }, Play::CENTRE);
 	Play::DrawFontText("132px", "SCORE: " + std::to_string(gameState.score),
 		{ DISPLAY_WIDTH / 2, 50 }, Play::CENTRE);
+
+	Play::ColourSprite("star", Play::cRed);
+	Play::DrawSprite("star", { 50, 50 }, 0);
+	Play::ColourSprite("star", Play::cWhite);
+	Play::DrawFontText("132px", ": " + std::to_string(gameState.destructionTokens),
+		{ 120, 50 }, Play::LEFT);
 
 	Play::PresentDrawingBuffer();
 	return Play::KeyDown( VK_ESCAPE );
@@ -141,6 +152,17 @@ void UpdateFan() {
 		obj_coin.velocity = { -3, 0 };
 		obj_coin.rotSpeed = 0.1f;
 	}
+
+	// 1 in 500 chance of spawning a destruction wave token
+	Play::ColourSprite("star", Play::cRed);
+	if (Play::RandomRoll(500) == 1) {
+		int id = Play::CreateGameObject(TYPE_DESTRUCTIONTOKEN, obj_fan.pos, 40, "star");
+		GameObject& obj_destructiontoken = Play::GetGameObject(id);
+		obj_destructiontoken.velocity = { -3, 0 };
+		obj_destructiontoken.rotSpeed = 0.1f;
+	}
+	Play::ColourSprite("star", Play::cWhite);
+
 	// animate fan to move within screen bounds by reversing direction
 	Play::UpdateGameObject(obj_fan);
 	if (Play::IsLeavingDisplayArea(obj_fan)) {
@@ -222,10 +244,46 @@ void UpdateCoinsAndStars() {
 	}
 }
 
+void UpdateDestructionToken() {
+	GameObject& obj_agent8 = Play::GetGameObjectByType(TYPE_AGENT8);
+	std::vector<int> vTokens = Play::CollectGameObjectIDsByType(TYPE_DESTRUCTIONTOKEN);
+	// for each item
+	for (int id_token : vTokens) {
+		GameObject& obj_token = Play::GetGameObject(id_token);
+		bool hasCollided = false;
+
+		// token collection
+		if (Play::IsColliding(obj_token, obj_agent8)) {
+			// spawn stars
+			//for (float rad{ 0.25f }; rad < 2.0f; rad += 0.5f) {
+			//	int id = Play::CreateGameObject(TYPE_STAR, obj_agent8.pos, 0, "star");
+			//	GameObject& obj_star = Play::GetGameObject(id);
+			//	// star motion
+			//	obj_star.rotSpeed = 0.1f;
+			//	obj_star.acceleration = { 0.0f, 0.5f };
+			//	Play::SetGameObjectDirection(obj_star, 16, rad * PLAY_PI);
+			//}
+
+			hasCollided = true;
+			gameState.destructionTokens += 1;
+			Play::PlayAudio("collect");
+		}
+
+		Play::ColourSprite("star", Play::cRed);
+		Play::UpdateGameObject(obj_token);
+		Play::DrawObjectRotated(obj_token);
+		Play::ColourSprite("star", Play::cWhite);
+
+		if (!Play::IsVisible(obj_token) || hasCollided)
+			Play::DestroyGameObject(id_token);
+	}
+}
+
 void UpdateLasers() {
 	std::vector<int> vLasers = Play::CollectGameObjectIDsByType(TYPE_LASER);
 	std::vector<int> vTools = Play::CollectGameObjectIDsByType(TYPE_TOOL);
 	std::vector<int> vCoins = Play::CollectGameObjectIDsByType(TYPE_COIN);
+	std::vector<int> vDestructionTokens = Play::CollectGameObjectIDsByType(TYPE_DESTRUCTIONTOKEN);
 	
 	for (int id_laser : vLasers) {
 		GameObject& obj_laser = Play::GetGameObject(id_laser);
@@ -249,6 +307,16 @@ void UpdateLasers() {
 				obj_coin.type = TYPE_DESTROYED;
 				Play::PlayAudio("error");
 				gameState.score -= 300;
+			}
+		}
+		// collision with destruction tokens
+		for (int id_token : vDestructionTokens) {
+			GameObject& obj_token = Play::GetGameObject(id_token);
+			// set object to destroyed and change score
+			if (Play::IsColliding(obj_laser, obj_token)) {
+				hasCollided = true;
+				obj_token.type = TYPE_DESTROYED;
+				Play::PlayAudio("error");
 			}
 		}
 		// min score
