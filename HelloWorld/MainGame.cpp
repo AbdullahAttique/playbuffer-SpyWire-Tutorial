@@ -39,6 +39,7 @@ void UpdateFan();
 void UpdateTools();
 void UpdateCoinsAndStars();
 void UpdateDestructionToken();
+void UpdateDestructionWave();
 void UpdateLasers();
 void UpdateDestroyed();
 void UpdateAgent8();
@@ -61,6 +62,7 @@ bool MainGameUpdate( float elapsedTime )
 {
 	Play::DrawBackground();
 
+	UpdateDestructionWave();
 	UpdateAgent8();
 	UpdateFan();
 	UpdateTools();
@@ -74,9 +76,7 @@ bool MainGameUpdate( float elapsedTime )
 	Play::DrawFontText("132px", "SCORE: " + std::to_string(gameState.score),
 		{ DISPLAY_WIDTH / 2, 50 }, Play::CENTRE);
 
-	Play::ColourSprite("star", Play::cRed);
 	Play::DrawSprite("star", { 50, 50 }, 0);
-	Play::ColourSprite("star", Play::cWhite);
 	Play::DrawFontText("132px", ": " + std::to_string(gameState.destructionTokens),
 		{ 120, 50 }, Play::LEFT);
 
@@ -123,6 +123,17 @@ void HandlePlayerControls() {
 		Play::GetGameObject(id).velocity = { 32, 0 };
 		Play::PlayAudio("shoot");
 	}
+	// destruction wave
+	if (Play::KeyPressed(VK_CONTROL)) {
+		// ensure that player has tokens to call destruction wave
+		if (gameState.destructionTokens > 0) {
+			Vector2D wavePos = obj_agent8.pos;
+			int id = Play::CreateGameObject(TYPE_DESTRUCTIONWAVE, wavePos, 30, "star");
+			Play::GetGameObject(id).rotSpeed = 0.1f;
+			Play::PlayAudio("explode");
+			gameState.destructionTokens--; // decrement tokens
+		}
+	}
 }
 
 void UpdateFan() {
@@ -154,14 +165,12 @@ void UpdateFan() {
 	}
 
 	// 1 in 500 chance of spawning a destruction wave token
-	Play::ColourSprite("star", Play::cRed);
 	if (Play::RandomRoll(500) == 1) {
 		int id = Play::CreateGameObject(TYPE_DESTRUCTIONTOKEN, obj_fan.pos, 40, "star");
 		GameObject& obj_destructiontoken = Play::GetGameObject(id);
 		obj_destructiontoken.velocity = { -3, 0 };
 		obj_destructiontoken.rotSpeed = 0.1f;
 	}
-	Play::ColourSprite("star", Play::cWhite);
 
 	// animate fan to move within screen bounds by reversing direction
 	Play::UpdateGameObject(obj_fan);
@@ -254,28 +263,65 @@ void UpdateDestructionToken() {
 
 		// token collection
 		if (Play::IsColliding(obj_token, obj_agent8)) {
-			// spawn stars
-			//for (float rad{ 0.25f }; rad < 2.0f; rad += 0.5f) {
-			//	int id = Play::CreateGameObject(TYPE_STAR, obj_agent8.pos, 0, "star");
-			//	GameObject& obj_star = Play::GetGameObject(id);
-			//	// star motion
-			//	obj_star.rotSpeed = 0.1f;
-			//	obj_star.acceleration = { 0.0f, 0.5f };
-			//	Play::SetGameObjectDirection(obj_star, 16, rad * PLAY_PI);
-			//}
-
 			hasCollided = true;
-			gameState.destructionTokens += 1;
+			gameState.destructionTokens++;
 			Play::PlayAudio("collect");
 		}
 
-		Play::ColourSprite("star", Play::cRed);
 		Play::UpdateGameObject(obj_token);
 		Play::DrawObjectRotated(obj_token);
-		Play::ColourSprite("star", Play::cWhite);
 
 		if (!Play::IsVisible(obj_token) || hasCollided)
 			Play::DestroyGameObject(id_token);
+	}
+}
+
+void UpdateDestructionWave() {
+	std::vector<int> vWaves = Play::CollectGameObjectIDsByType(TYPE_DESTRUCTIONWAVE);
+	std::vector<int> vTools = Play::CollectGameObjectIDsByType(TYPE_TOOL);
+	std::vector<int> vCoins = Play::CollectGameObjectIDsByType(TYPE_COIN);
+	std::vector<int> vDestructionTokens = Play::CollectGameObjectIDsByType(TYPE_DESTRUCTIONTOKEN);
+
+	for (int id_wave : vWaves) {
+		GameObject& obj_wave = Play::GetGameObject(id_wave);
+		bool hasCollided = false;
+		// collision with tools
+		for (int id_tool : vTools) {
+			GameObject& obj_tool = Play::GetGameObject(id_tool);
+			// set object to destroyed
+			if (Play::IsColliding(obj_wave, obj_tool)) {
+				hasCollided = true;
+				obj_tool.type = TYPE_DESTROYED;
+			}
+		}
+		// collision with coins
+		for (int id_coin : vCoins) {
+			GameObject& obj_coin = Play::GetGameObject(id_coin);
+			// set object to destroyed
+			if (Play::IsColliding(obj_wave, obj_coin)) {
+				hasCollided = true;
+				obj_coin.type = TYPE_DESTROYED;
+			}
+		}
+		// collision with destruction tokens
+		for (int id_token : vDestructionTokens) {
+			GameObject& obj_token = Play::GetGameObject(id_token);
+			// set object to destroyed
+			if (Play::IsColliding(obj_wave, obj_token)) {
+				hasCollided = true;
+				obj_token.type = TYPE_DESTROYED;
+			}
+		}
+
+		obj_wave.scale *= 1.1f;
+		obj_wave.radius *= 1.1f;
+
+		Play::UpdateGameObject(obj_wave);
+		Play::DrawObjectRotated(obj_wave);
+
+		if (obj_wave.scale > 200)
+			obj_wave.type = TYPE_DESTROYED;
+			//Play::DestroyGameObject(id_wave);
 	}
 }
 
@@ -312,7 +358,7 @@ void UpdateLasers() {
 		// collision with destruction tokens
 		for (int id_token : vDestructionTokens) {
 			GameObject& obj_token = Play::GetGameObject(id_token);
-			// set object to destroyed and change score
+			// set object to destroyed
 			if (Play::IsColliding(obj_laser, obj_token)) {
 				hasCollided = true;
 				obj_token.type = TYPE_DESTROYED;
