@@ -71,7 +71,7 @@ bool MainGameUpdate( float elapsedTime )
 	UpdateLasers();
 	UpdateDestroyed();
 
-	Play::DrawFontText("64px", "ARROW KEYS TO MOVE UP AND DOWN AND SPACE TO FIRE",
+	Play::DrawFontText("64px", "ARROW KEYS TO MOVE UP AND DOWN, SPACE TO FIRE, AND CTRL TO USE DESTRUCTIVE WAVE",
 		{ DISPLAY_WIDTH / 2, DISPLAY_HEIGHT - 30 }, Play::CENTRE);
 	Play::DrawFontText("132px", "SCORE: " + std::to_string(gameState.score),
 		{ DISPLAY_WIDTH / 2, 50 }, Play::CENTRE);
@@ -126,7 +126,7 @@ void HandlePlayerControls() {
 	// destruction wave
 	if (Play::KeyPressed(VK_CONTROL)) {
 		// ensure that player has tokens to call destruction wave
-		if (gameState.destructionTokens > 0) {
+		if (gameState.destructionTokens > -100) {
 			Vector2D wavePos = obj_agent8.pos;
 			int id = Play::CreateGameObject(TYPE_DESTRUCTIONWAVE, wavePos, 30, "star");
 			Play::GetGameObject(id).rotSpeed = 0.1f;
@@ -313,15 +313,15 @@ void UpdateDestructionWave() {
 			}
 		}
 
-		obj_wave.scale *= 1.1f;
-		obj_wave.radius *= 1.1f;
+		float scaleFactor = 1.1f;
+		obj_wave.scale *= scaleFactor;
+		obj_wave.radius *= scaleFactor;
 
 		Play::UpdateGameObject(obj_wave);
 		Play::DrawObjectRotated(obj_wave);
 
-		if (obj_wave.scale > 200)
+		if (obj_wave.radius*2 > DISPLAY_WIDTH*2)
 			obj_wave.type = TYPE_DESTROYED;
-			//Play::DestroyGameObject(id_wave);
 	}
 }
 
@@ -430,6 +430,7 @@ void UpdateAgent8() {
 				obj_agent8.frame = 0;
 				Play::StartAudioLoop("music");
 				gameState.score = 0;
+				gameState.destructionTokens = 0;
 				// remove tools from scene
 				for (int id_obj : Play::CollectGameObjectIDsByType(TYPE_TOOL))
 					Play::GetGameObject(id_obj).type = TYPE_DESTROYED;
