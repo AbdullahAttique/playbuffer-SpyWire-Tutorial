@@ -57,7 +57,6 @@ bool MainGameUpdate( float elapsedTime )
 {
 	Play::DrawBackground();
 
-	//HandlePlayerControls();
 	UpdateAgent8();
 	UpdateFan();
 	UpdateTools();
