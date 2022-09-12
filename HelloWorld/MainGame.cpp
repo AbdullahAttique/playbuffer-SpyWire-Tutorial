@@ -126,7 +126,7 @@ void HandlePlayerControls() {
 	// destruction wave
 	if (Play::KeyPressed(VK_CONTROL)) {
 		// ensure that player has tokens to call destruction wave
-		if (gameState.destructionTokens > -100) {
+		if (gameState.destructionTokens > 0) {
 			Vector2D wavePos = obj_agent8.pos;
 			int id = Play::CreateGameObject(TYPE_DESTRUCTIONWAVE, wavePos, 30, "star");
 			Play::GetGameObject(id).rotSpeed = 0.1f;
@@ -253,6 +253,10 @@ void UpdateCoinsAndStars() {
 	}
 }
 
+/*
+* updates the destruction tokens (token that can be used to call destruction wave)
+* that can be spawned from the fan. handles its collection upon collision with the player
+*/
 void UpdateDestructionToken() {
 	GameObject& obj_agent8 = Play::GetGameObjectByType(TYPE_AGENT8);
 	std::vector<int> vTokens = Play::CollectGameObjectIDsByType(TYPE_DESTRUCTIONTOKEN);
@@ -276,6 +280,10 @@ void UpdateDestructionToken() {
 	}
 }
 
+/*
+* updates the destruction waves in the scene, checking for collisions with obstacles/items
+* that it can eliminate and growing the wave over time.
+*/
 void UpdateDestructionWave() {
 	std::vector<int> vWaves = Play::CollectGameObjectIDsByType(TYPE_DESTRUCTIONWAVE);
 	std::vector<int> vTools = Play::CollectGameObjectIDsByType(TYPE_TOOL);
@@ -313,6 +321,7 @@ void UpdateDestructionWave() {
 			}
 		}
 
+		// increase size of wave over time
 		float scaleFactor = 1.1f;
 		obj_wave.scale *= scaleFactor;
 		obj_wave.radius *= scaleFactor;
@@ -320,6 +329,7 @@ void UpdateDestructionWave() {
 		Play::UpdateGameObject(obj_wave);
 		Play::DrawObjectRotated(obj_wave);
 
+		// destroy wave once a certain size is reached
 		if (obj_wave.radius*2 > DISPLAY_WIDTH*2)
 			obj_wave.type = TYPE_DESTROYED;
 	}
